@@ -194,7 +194,8 @@ async fn handle_tun_with_nat(
         }
 
         println!();
-        println!("Raw packet from nat: {:?}", packet);
+        println!("Raw packet from tun: {:?}", packet);
+        println!("raw position [2]: {}", buffer[2]);
         println!();
 
         let ip_start = if buffer[0] == 0 && buffer[1] == 0 {
