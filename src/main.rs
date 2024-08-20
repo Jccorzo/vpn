@@ -106,8 +106,14 @@ async fn handle_connection_with_nat(
                     mut_pack.set_source(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
+                    let packet = mut_pack.packet();
+
+                    println!();
+                    println!("Raw Packet going to tun {:?}", packet);
+                    println!();
+
                     // write to tun
-                    match tun.write().await.write_all(&mut_pack.packet()).await {
+                    match tun.write().await.write_all(packet).await {
                         Ok(_n) => {
                             println!("Data written to tun interface");
                         }
@@ -128,7 +134,7 @@ async fn handle_connection_with_nat(
             }
             6 => {
                 println!("IP 6 version from client");
-                if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
+                if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
                         "TCP IPV6 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -138,13 +144,10 @@ async fn handle_connection_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
-                    mut_pack.set_source(source);
+                    /* let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
+                    mut_pack.set_source(source); */
 
-                    // write to tun
-                    // read from tun
                     // write to stream
-
                     /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
                         eprintln!("Failed to send data: {}", e);
                         break;
@@ -259,7 +262,7 @@ async fn handle_tun_with_nat(
                     );
 
                     let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
-                    mut_pack.set_source(source);
+                    mut_pack.set_destination(source);
 
                     // write to tun
                     // read from tun
