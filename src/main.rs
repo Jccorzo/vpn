@@ -28,8 +28,6 @@ async fn main() -> std::io::Result<()> {
 
     let dev = tun::create_as_async(&config).expect("Error opening tun interface");
 
-
-
     let pointer_dev = Arc::new(RwLock::new(dev));
 
     let listener = TcpListener::bind("0.0.0.0:7878")
@@ -47,81 +45,13 @@ async fn main() -> std::io::Result<()> {
         println!("Connection established!");
         tokio::spawn(async move {
             let (stream_r, stream_w) = tokio::io::split(stream);
-            tokio::spawn(handle_connection(stream_r, device_clone, address));
-            tokio::spawn(handle_tun(stream_w, device_clone2, address));
+            tokio::spawn(handle_connection_with_nat(stream_r, device_clone, address));
+            tokio::spawn(handle_tun_with_nat(stream_w, device_clone2, address));
 
             println!("finishsss")
         });
     }
 }
-
-async fn handle_connection(
-    mut stream: ReadHalf<TcpStream>,
-    tun: Arc<RwLock<AsyncDevice>>,
-    client_ip: SocketAddr,
-) {
-    let mut buffer = [0; BUFFER_SIZE];
-
-    loop {
-        let mut packet = Vec::new();
-
-        loop {
-            let n = match stream.read(&mut buffer).await {
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("Failed to read data: {}", e);
-                    return;
-                }
-            };
-            if n == 0 {
-                println!("Client disconnected:");
-                return;
-            }
-            packet.extend_from_slice(&buffer[..n]);
-            if n < BUFFER_SIZE {
-                // If less than buffer size is read, assume end of message
-                break;
-            }
-        }
-
-        // This Data is coming from tun interface, so packets are either ipv4 or ipv6
-        match tun.write().await.write_all(&packet).await {
-            Ok(_n) => {
-                println!("Data written to tun interface");
-            }
-            Err(err) => {
-                eprintln!("Failed to write data to tun interface: {}", err);
-                return;
-            }
-        }
-
-        tun.write().await.flush().await;
-    }
-}
-
-async fn handle_tun(
-    mut stream: WriteHalf<TcpStream>,
-    tun_reader: Arc<RwLock<AsyncDevice>>,
-    client_ip: SocketAddr,
-) -> std::io::Result<()> {
-    let mut buffer = [0; 1500];
-    loop {
-        match tun_reader.write().await.read(&mut buffer).await {
-            Ok(n) => {
-                // read from tun
-                stream.write_all(&buffer[..n]).await?;
-            }
-            Err(e) => {
-                eprintln!("Failed to read from TUN device: {}", e);
-                return Err(e);
-            }
-        }
-    }
-}
-
-
-
-
 
 
 async fn handle_connection_with_nat(
@@ -167,7 +97,8 @@ async fn handle_connection_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    let source = Ipv4Addr::new(10, 0, 0, 5);
+                    // TODO: update this from locally getting public ip
+                    let source = Ipv4Addr::new(34, 121, 29, 210);
                     mut_pack.set_source(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
@@ -247,12 +178,12 @@ async fn handle_tun_with_nat(
                     if let Err(e) = stream.write_all(mut_pack.packet()).await {
                         eprintln!("Failed to send data to tcp client {}", e);
                     } else {
-                        println!("ipv4 data sent to tcp client");
+                        println!("ipv4 data sent to vpn client");
                         println!();
                     }
-                    // Perform NAT: Modify the destination IP address to the client's VPN IP
-                    // Here you would add code to modify the packet's destination IP
+
                     stream.write_all(&buffer[..n]).await?;
+                    stream.flush().await?
                 }
             }
             Err(e) => {
