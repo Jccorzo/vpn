@@ -5,7 +5,7 @@ use std::{
 
 use pnet::packet::{ipv4::MutableIpv4Packet, ipv6::MutableIpv6Packet, Packet};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -28,6 +28,8 @@ async fn main() -> std::io::Result<()> {
 
     let dev = tun::create_as_async(&config).expect("Error opening tun interface");
 
+
+
     let pointer_dev = Arc::new(RwLock::new(dev));
 
     let listener = TcpListener::bind("0.0.0.0:7878")
@@ -38,52 +40,27 @@ async fn main() -> std::io::Result<()> {
     loop {
         let (stream, address) = listener.accept().await?;
         let device_clone = pointer_dev.clone();
+        let device_clone2 = pointer_dev.clone();
+
+        
 
         println!("Connection established!");
         tokio::spawn(async move {
-            handle_connection(stream, address, device_clone).await;
+            let (stream_r, stream_w) = tokio::io::split(stream);
+            tokio::spawn(handle_connection(stream_r, device_clone, address));
+            tokio::spawn(handle_tun(stream_w, device_clone2, address));
+
+            println!("finishsss")
         });
     }
 }
 
 async fn handle_connection(
-    mut stream: TcpStream,
-    address: SocketAddr,
+    mut stream: ReadHalf<TcpStream>,
     tun: Arc<RwLock<AsyncDevice>>,
+    client_ip: SocketAddr,
 ) {
     let mut buffer = [0; BUFFER_SIZE];
-
-    /* match stream.read(&mut buffer).await {
-        Ok(n) => {
-            if n == 0 {
-                println!("Client disconnected.");
-                return;
-            }
-
-            let received_password = String::from_utf8((&buffer[..n]).to_vec());
-
-            match received_password {
-                Ok(received_password) => {
-                    // validate password against backend here
-                    if received_password == "PASSWORD" {
-                        println!("Successssssssss");
-                        return ;
-                    } else {
-                        eprintln!("Authentication Failed");
-                        return;
-                    }
-                }
-                Err(_) => {
-                    eprintln!("Authentication Failed: Error parsing password");
-                    return;
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to read data: {}", e);
-            return;
-        }
-    }; */
 
     loop {
         let mut packet = Vec::new();
@@ -136,56 +113,6 @@ async fn handle_connection(
                             return;
                         }
                     }
-
-                    let mut buffer = [0; BUFFER_SIZE];
-
-                    let mut packet = Vec::new();
-
-                    loop {
-                        {
-                            let n = match tun.write().await.read(&mut buffer).await {
-                                Ok(n) => n,
-                                Err(e) => {
-                                    eprintln!("Failed to read data: {}", e);
-                                    return;
-                                }
-                            };
-                            if n == 0 {
-                                println!("Client disconnected:");
-                                return;
-                            }
-                            packet.extend_from_slice(&buffer[..n]);
-                            if n < BUFFER_SIZE {
-                                // If less than buffer size is read, assume end of message
-                                break;
-                            }
-                        }
-                    }
-
-                    // read from tun
-                    if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
-                        println!(
-                            "MUT IPV4 Source IP: {:?}",
-                            mut_pack.get_source().to_string()
-                        );
-                        println!(
-                            "MUTCK IPV4 Destination IP: {:?}",
-                            mut_pack.get_destination().to_string()
-                        );
-
-                        let source = Ipv4Addr::new(10, 0, 0, 1);
-                        mut_pack.set_source(source);
-                        mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
-                    }
-
-                    // write to stream
-                    if let Err(e) = stream.write_all(mut_pack.packet()).await {
-                        eprintln!("Failed to send data: {}", e);
-                        break;
-                    } else {
-                        println!("ipv4 data sent");
-                        println!();
-                    }
                 }
             }
             6 => {
@@ -207,18 +134,60 @@ async fn handle_connection(
                     // read from tun
                     // write to stream
 
-                    if let Err(e) = stream.write_all(mut_pack.packet()).await {
+                    /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
                         eprintln!("Failed to send data: {}", e);
                         break;
                     } else {
                         println!("ipv6 data sent");
                         println!();
-                    }
+                    } */
                 }
             }
             _ => println!("Unknown IP version"),
         }
     }
+}
 
-    println!("Client disconnected:");
+async fn handle_tun(
+    mut stream: WriteHalf<TcpStream>,
+    tun_reader: Arc<RwLock<AsyncDevice>>,
+    client_ip: SocketAddr,
+) -> std::io::Result<()> {
+    let mut buffer = [0; 1500];
+    loop {
+        match tun_reader.write().await.read(&mut buffer).await {
+            Ok(n) => {
+                // read from tun
+                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
+                    println!(
+                        "MUT IPV4 Source IP: {:?}",
+                        mut_pack.get_source().to_string()
+                    );
+                    println!(
+                        "MUTCK IPV4 Destination IP: {:?}",
+                        mut_pack.get_destination().to_string()
+                    );
+
+                    let source = Ipv4Addr::new(10, 0, 0, 1);
+                    mut_pack.set_source(source);
+                    mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
+
+                    // write to stream
+                    if let Err(e) = stream.write_all(mut_pack.packet()).await {
+                        eprintln!("Failed to send data: {}", e);
+                    } else {
+                        println!("ipv4 data sent");
+                        println!();
+                    }
+                    // Perform NAT: Modify the destination IP address to the client's VPN IP
+                    // Here you would add code to modify the packet's destination IP
+                    stream.write_all(&buffer[..n]).await?;
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to read from TUN device: {}", e);
+                return Err(e);
+            }
+        }
+    }
 }
