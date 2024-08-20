@@ -47,8 +47,6 @@ async fn main() -> std::io::Result<()> {
             let (stream_r, stream_w) = tokio::io::split(stream);
             tokio::spawn(handle_connection_with_nat(stream_r, device_clone, address));
             tokio::spawn(handle_tun_with_nat(stream_w, device_clone2, address));
-
-            println!("finishsss")
         });
     }
 }
@@ -68,7 +66,7 @@ async fn handle_connection_with_nat(
             let n = match stream.read(&mut buffer).await {
                 Ok(n) => n,
                 Err(e) => {
-                    eprintln!("Failed to read data: {}", e);
+                    eprintln!("Failed to read data from client: {}", e);
                     return;
                 }
             };
@@ -83,10 +81,10 @@ async fn handle_connection_with_nat(
             }
         }
 
-        // This Data is coming from tun interface, so packets are either ipv4 or ipv6
+        // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
             4 => {
-                println!("IP 4 version");
+                println!("IP 4 version from client");
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
                     println!(
                         "TCP IPV4 Source IP: {:?}",
@@ -114,11 +112,17 @@ async fn handle_connection_with_nat(
                         }
                     }
 
-                    tun.write().await.flush().await;
+                    match tun.write().await.flush().await {
+                        Ok(_n) => {}
+                        Err(err) => {
+                            eprintln!("Failed to flush data to tun interface: {}", err);
+                            return;
+                        }
+                    }
                 }
             }
             6 => {
-                println!("IP 6 version");
+                println!("IP 6 version from client");
                 if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
                         "TCP IPV6 Source IP: {:?}",
@@ -145,7 +149,7 @@ async fn handle_connection_with_nat(
                     } */
                 }
             }
-            _ => println!("Unknown IP version"),
+            _ => println!("Unknown IP version from client"),
         }
     }
 }
@@ -154,7 +158,7 @@ async fn handle_tun_with_nat(
     mut stream: WriteHalf<TcpStream>,
     tun_reader: Arc<RwLock<AsyncDevice>>,
     client_ip: SocketAddr,
-) -> std::io::Result<()> {
+) {
     let mut buffer = [0; 1500];
     loop {
 
@@ -203,12 +207,28 @@ async fn handle_tun_with_nat(
                         println!();
                     }
 
-                    stream.write_all(&mut_pack.packet()).await?;
-                    stream.flush().await?
+                    match stream.write_all(&mut_pack.packet()).await {
+                        Ok(_n) => {
+                            println!("Data written to tcp client");
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to write data to tcp client: {}", err);
+                            return;
+                        }
+                    }
+                    match stream.flush().await {
+                        Ok(_n) => {
+                            println!("flushed to tcp client");
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to flush data to tcp client: {}", err);
+                            return;
+                        }
+                    }
                 }
             }
             6 => {
-                println!("IP 6 version");
+                println!("IP 6 version from tun");
                 if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
                         "TCP IPV6 Source IP: {:?}",
@@ -235,7 +255,7 @@ async fn handle_tun_with_nat(
                     } */
                 }
             }
-            _ => println!("Unknown IP version"),
+            _ => println!("Unknown IP version from tun"),
         }
     }
 }
