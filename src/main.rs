@@ -90,11 +90,11 @@ async fn handle_connection(
                 println!("IP 4 version");
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
                     println!(
-                        "MUT IPV4 Source IP: {:?}",
+                        "TCP IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
                     );
                     println!(
-                        "MUTCK IPV4 Destination IP: {:?}",
+                        "TCP IPV4 Destination IP: {:?}",
                         mut_pack.get_destination().to_string()
                     );
 
@@ -113,17 +113,19 @@ async fn handle_connection(
                             return;
                         }
                     }
+
+                    tun.write().await.flush().await;
                 }
             }
             6 => {
                 println!("IP 6 version");
                 if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
-                        "MUT IPV6 Source IP: {:?}",
+                        "TCP IPV6 Source IP: {:?}",
                         mut_pack.get_source().to_string()
                     );
                     println!(
-                        "MUTCK IPV6 Destination IP: {:?}",
+                        "TCP IPV6 Destination IP: {:?}",
                         mut_pack.get_destination().to_string()
                     );
 
@@ -160,11 +162,11 @@ async fn handle_tun(
                 // read from tun
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
-                        "MUT IPV4 Source IP: {:?}",
+                        "TUN IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
                     );
                     println!(
-                        "MUTCK IPV4 Destination IP: {:?}",
+                        "TUN IPV4 Destination IP: {:?}",
                         mut_pack.get_destination().to_string()
                     );
 
@@ -174,9 +176,9 @@ async fn handle_tun(
 
                     // write to stream
                     if let Err(e) = stream.write_all(mut_pack.packet()).await {
-                        eprintln!("Failed to send data: {}", e);
+                        eprintln!("Failed to send data to tcp client {}", e);
                     } else {
-                        println!("ipv4 data sent");
+                        println!("ipv4 data sent to tcp client");
                         println!();
                     }
                     // Perform NAT: Modify the destination IP address to the client's VPN IP
