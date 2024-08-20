@@ -40,8 +40,6 @@ async fn main() -> std::io::Result<()> {
         let device_clone = pointer_dev.clone();
         let device_clone2 = pointer_dev.clone();
 
-        
-
         println!("Connection established!");
         tokio::spawn(async move {
             let (stream_r, stream_w) = tokio::io::split(stream);
@@ -199,7 +197,13 @@ async fn handle_tun_with_nat(
         println!("Raw packet from nat: {:?}", packet);
         println!();
 
-        match packet[0] >> 4 {
+        let ip_start = if buffer[0] == 0 && buffer[1] == 0 {
+            2 // Skip the first 2 bytes (padding or extra data)
+        } else {
+            0 // IP packet starts at the first byte
+        };
+
+        match packet[ip_start] >> 4 {
             4 => {
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
