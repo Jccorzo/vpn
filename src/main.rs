@@ -85,6 +85,75 @@ async fn handle_connection(
         }
 
         // This Data is coming from tun interface, so packets are either ipv4 or ipv6
+        match tun.write().await.write_all(&packet).await {
+            Ok(_n) => {
+                println!("Data written to tun interface");
+            }
+            Err(err) => {
+                eprintln!("Failed to write data to tun interface: {}", err);
+                return;
+            }
+        }
+
+        tun.write().await.flush().await;
+    }
+}
+
+async fn handle_tun(
+    mut stream: WriteHalf<TcpStream>,
+    tun_reader: Arc<RwLock<AsyncDevice>>,
+    client_ip: SocketAddr,
+) -> std::io::Result<()> {
+    let mut buffer = [0; 1500];
+    loop {
+        match tun_reader.write().await.read(&mut buffer).await {
+            Ok(n) => {
+                // read from tun
+                stream.write_all(&buffer[..n]).await?;
+            }
+            Err(e) => {
+                eprintln!("Failed to read from TUN device: {}", e);
+                return Err(e);
+            }
+        }
+    }
+}
+
+
+
+
+
+
+async fn handle_connection_with_nat(
+    mut stream: ReadHalf<TcpStream>,
+    tun: Arc<RwLock<AsyncDevice>>,
+    client_ip: SocketAddr,
+) {
+    let mut buffer = [0; BUFFER_SIZE];
+
+    loop {
+        let mut packet = Vec::new();
+
+        loop {
+            let n = match stream.read(&mut buffer).await {
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("Failed to read data: {}", e);
+                    return;
+                }
+            };
+            if n == 0 {
+                println!("Client disconnected:");
+                return;
+            }
+            packet.extend_from_slice(&buffer[..n]);
+            if n < BUFFER_SIZE {
+                // If less than buffer size is read, assume end of message
+                break;
+            }
+        }
+
+        // This Data is coming from tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
             4 => {
                 println!("IP 4 version");
@@ -150,7 +219,7 @@ async fn handle_connection(
     }
 }
 
-async fn handle_tun(
+async fn handle_tun_with_nat(
     mut stream: WriteHalf<TcpStream>,
     tun_reader: Arc<RwLock<AsyncDevice>>,
     client_ip: SocketAddr,
