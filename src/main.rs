@@ -81,6 +81,14 @@ async fn handle_connection_with_nat(
             }
         }
 
+        if packet.is_empty() {
+            continue;
+        }
+
+        println!();
+        println!("Raw packet from client: {:?}", packet);
+        println!();
+
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
             4 => {
@@ -182,6 +190,14 @@ async fn handle_tun_with_nat(
                 break;
             }
         }
+
+        if packet.is_empty() {
+            continue;
+        }
+
+        println!();
+        println!("Raw packet from nat: {:?}", packet);
+        println!();
 
         match packet[0] >> 4 {
             4 => {
