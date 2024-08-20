@@ -157,9 +157,30 @@ async fn handle_tun_with_nat(
 ) -> std::io::Result<()> {
     let mut buffer = [0; 1500];
     loop {
-        match tun_reader.write().await.read(&mut buffer).await {
-            Ok(n) => {
-                // read from tun
+
+        let mut packet = Vec::new();
+
+        loop {
+            let n = match tun_reader.write().await.read(&mut buffer).await {
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("Failed to read data: {}", e);
+                    break;
+                }
+            };
+            if n == 0 {
+                println!("Client disconnected:");
+                break;
+            }
+            packet.extend_from_slice(&buffer[..n]);
+            if n < BUFFER_SIZE {
+                // If less than buffer size is read, assume end of message
+                break;
+            }
+        }
+
+        match packet[0] >> 4 {
+            4 => {
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
                         "TUN IPV4 Source IP: {:?}",
@@ -182,14 +203,39 @@ async fn handle_tun_with_nat(
                         println!();
                     }
 
-                    stream.write_all(&buffer[..n]).await?;
+                    stream.write_all(&mut_pack.packet()).await?;
                     stream.flush().await?
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to read from TUN device: {}", e);
-                return Err(e);
+            6 => {
+                println!("IP 6 version");
+                if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
+                    println!(
+                        "TCP IPV6 Source IP: {:?}",
+                        mut_pack.get_source().to_string()
+                    );
+                    println!(
+                        "TCP IPV6 Destination IP: {:?}",
+                        mut_pack.get_destination().to_string()
+                    );
+
+                    let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
+                    mut_pack.set_source(source);
+
+                    // write to tun
+                    // read from tun
+                    // write to stream
+
+                    /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
+                        eprintln!("Failed to send data: {}", e);
+                        break;
+                    } else {
+                        println!("ipv6 data sent");
+                        println!();
+                    } */
+                }
             }
+            _ => println!("Unknown IP version"),
         }
     }
 }
