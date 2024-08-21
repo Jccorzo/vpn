@@ -11,7 +11,7 @@ use tokio::{
 };
 use tun::AsyncDevice;
 
-const BUFFER_SIZE: usize = 1024;
+const BUFFER_SIZE: usize = 1500;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -94,27 +94,29 @@ async fn handle_connection_with_nat(
     loop {
         let mut packet = Vec::new();
 
-        loop {
-            let n = match stream.read(&mut buffer).await {
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("Failed to read data from client: {}", e);
+        {
+            loop {
+                let n = match stream.read(&mut buffer).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        eprintln!("Failed to read data from client: {}", e);
+                        return;
+                    }
+                };
+                if n == 0 {
+                    println!("Client disconnected:");
                     return;
                 }
-            };
-            if n == 0 {
-                println!("Client disconnected:");
-                return;
+                packet.extend_from_slice(&buffer[..n]);
+                if n < BUFFER_SIZE {
+                    // If less than buffer size is read, assume end of message
+                    break;
+                }
             }
-            packet.extend_from_slice(&buffer[..n]);
-            if n < BUFFER_SIZE {
-                // If less than buffer size is read, assume end of message
-                break;
-            }
-        }
 
-        if packet.is_empty() {
-            continue;
+            if packet.is_empty() {
+                continue;
+            }
         }
 
         println!();
@@ -197,7 +199,8 @@ async fn handle_tun_with_nat(
     tun_reader: Arc<RwLock<AsyncDevice>>,
     client_ip: SocketAddr,
 ) {
-    let mut buffer = [0; 1500];
+    let mut buffer = [0; BUFFER_SIZE];
+    
     loop {
         let mut packet = Vec::new();
 
