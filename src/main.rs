@@ -9,7 +9,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, RwLock},
 };
-use tun::{platform::Queue, AsyncDevice, Device};
+use tun::AsyncDevice;
 
 const BUFFER_SIZE: usize = 1500;
 
@@ -85,133 +85,16 @@ async fn main() -> std::io::Result<()> {
         println!("Connection established!");
         tokio::spawn(async move {
             let (stream_r, stream_w) = tokio::io::split(stream);
-            //handle_connection_with_nat2(stream_r, tun_tx, client_rx).await;
-            tokio::spawn(handle_connection_with_nat(stream_r, device_clone, address));
-            tokio::spawn(handle_tun_with_nat(stream_w, device_clone2, address));
+            handle_connection_with_nat(stream_r, device_clone).await;
+            //tokio::spawn(handle_connection_with_nat(stream_r, device_clone));
+            //tokio::spawn(handle_tun_with_nat(stream_w, device_clone2));
         });
-    }
-}
-
-async fn handle_connection_with_nat2(
-    mut stream: ReadHalf<TcpStream>,
-    tun_tx: mpsc::Sender<(Vec<u8>, SocketAddr)>,
-    mut client_rx: Arc<mpsc::Receiver<(Vec<u8>, SocketAddr)>>,
-) {
-    let mut buffer = [0; BUFFER_SIZE];
-
-    loop {
-        let mut packet = Vec::new();
-
-        {
-            loop {
-                let n = match stream.read(&mut buffer).await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("Failed to read data from client: {}", e);
-                        return;
-                    }
-                };
-                if n == 0 {
-                    println!("Client disconnected:");
-                    return;
-                }
-                packet.extend_from_slice(&buffer[..n]);
-                if n < BUFFER_SIZE {
-                    // If less than buffer size is read, assume end of message
-                    break;
-                }
-            }
-
-            if packet.is_empty() {
-                continue;
-            }
-        }
-
-        println!();
-        println!("Raw packet from client: {:?}", packet);
-        println!();
-
-        // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
-        match packet[0] >> 4 {
-            4 => {
-                println!("IP 4 version from client");
-                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
-                    println!(
-                        "TCP IPV4 Source IP: {:?}",
-                        mut_pack.get_source().to_string()
-                    );
-                    println!(
-                        "TCP IPV4 Destination IP: {:?}",
-                        mut_pack.get_destination().to_string()
-                    );
-
-                    // TODO: update this from locally getting public ip
-                    let source = Ipv4Addr::new(34, 121, 29, 210);
-                    mut_pack.set_source(source);
-                    mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
-
-                    let packet = mut_pack.packet();
-
-                    println!();
-                    println!("Raw Packet going to tun {:?}", packet);
-                    println!();
-
-                    {
-                        // write to tun
-                        match tun_tx
-                            .send((
-                                packet.to_owned(),
-                                SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 0),
-                            ))
-                            .await
-                        {
-                            Ok(_n) => {
-                                println!("Data written to tun interface");
-                            }
-                            Err(err) => {
-                                eprintln!("Failed to write data to tun interface: {}", err);
-                                return;
-                            }
-                        }
-
-                        println!("Packet from client - tun finished");
-                    }
-                }
-            }
-            6 => {
-                println!("IP 6 version from client");
-                if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet) {
-                    println!(
-                        "TCP IPV6 Source IP: {:?}",
-                        mut_pack.get_source().to_string()
-                    );
-                    println!(
-                        "TCP IPV6 Destination IP: {:?}",
-                        mut_pack.get_destination().to_string()
-                    );
-
-                    /* let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
-                    mut_pack.set_source(source); */
-
-                    // write to stream
-                    /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
-                        eprintln!("Failed to send data: {}", e);
-                        break;
-                    } else {
-                        println!("ipv6 data sent");
-                        println!();
-                    } */
-                }
-            }
-            _ => println!("Unknown IP version from client"),
-        }
     }
 }
 
 async fn handle_connection_with_nat(
     mut stream: ReadHalf<TcpStream>,
-    tun: Arc<RwLock<AsyncDevice>>,
-    client_ip: SocketAddr,
+    tun: Arc<RwLock<AsyncDevice>>
 ) {
     let mut buffer = [0; BUFFER_SIZE];
 
@@ -320,8 +203,7 @@ async fn handle_connection_with_nat(
 
 async fn handle_tun_with_nat(
     mut stream: WriteHalf<TcpStream>,
-    tun_reader: Arc<RwLock<AsyncDevice>>,
-    client_ip: SocketAddr,
+    tun_reader: Arc<RwLock<AsyncDevice>>
 ) {
     let mut buffer = [0; BUFFER_SIZE];
 
@@ -424,5 +306,4 @@ async fn handle_tun_with_nat(
             _ => println!("Unknown IP version from tun"),
         }
     }
-    println!("reading from tun broke")
 }
