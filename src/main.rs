@@ -9,7 +9,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, RwLock},
 };
-use tun::AsyncDevice;
+use tun::{platform::Queue, AsyncDevice, Device};
 
 const BUFFER_SIZE: usize = 1500;
 
@@ -33,6 +33,7 @@ async fn main() -> std::io::Result<()> {
     let client_rx = Arc::new(client_rx);
 
     let dev = tun::create_as_async(&config).expect("Error opening tun interface");
+
 
     let tun = Arc::new(RwLock::new(dev));
     /* let tun_task = tokio::spawn(async move {
@@ -423,4 +424,5 @@ async fn handle_tun_with_nat(
             _ => println!("Unknown IP version from tun"),
         }
     }
+    println!("reading from tun broke")
 }
