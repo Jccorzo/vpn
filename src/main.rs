@@ -5,9 +5,7 @@ use std::{
 
 use pnet::packet::{ipv4::MutableIpv4Packet, ipv6::MutableIpv6Packet, Packet};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
-    net::{TcpListener, TcpStream},
-    sync::RwLock,
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, sync::{mpsc, RwLock}
 };
 use tun::AsyncDevice;
 
@@ -17,6 +15,7 @@ const BUFFER_SIZE: usize = 1024;
 async fn main() -> std::io::Result<()> {
     let mut config = tun::Configuration::default();
     config
+        .name("utun7")
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
         .up();
@@ -26,7 +25,42 @@ async fn main() -> std::io::Result<()> {
         config.packet_information(true);
     });
 
+/*     // Create channels for communication between client handlers and the TUN task
+    let (tun_tx, mut tun_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
+    let (client_tx, mut client_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100); */
+
     let dev = tun::create_as_async(&config).expect("Error opening tun interface");
+
+    /*let tun = Arc::new(dev);
+     let tun_task = tokio::spawn (async move{
+        let mut tun = tun.clone();
+        let mut buf = [0; BUFFER_SIZE];
+
+        
+        loop {
+            tokio::select! {
+                /* tun_packet = tun.read(&mut buf).await => {
+                    match tun_packet {
+                        Ok(size) => {
+                            //client_tx.send((buf[..size].to_vec(), SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 0)));
+                        },
+                        Err(e) => {
+                            eprintln!("Failed to read from Tun: {}", e)
+                        }
+                    }
+                } */
+
+                // Receive packets from client handlers to send to TUN
+                Some((packet, _client_addr)) = tun_rx.recv() => {
+                    println!("TUN task received packet to send to TUN");
+                    if let Err(e) = tun.write_all(&packet).await {
+                        eprintln!("Failed to write packet to TUN: {}", e);
+                    }
+                }
+
+            }
+        }
+    }); */
 
     let pointer_dev = Arc::new(RwLock::new(dev));
 
@@ -124,12 +158,16 @@ async fn handle_connection_with_nat(
                     }
 
                     match tun.write().await.flush().await {
-                        Ok(_n) => {}
+                        Ok(_n) => {
+                            println!("Data flushed to tun interface");
+                        }
                         Err(err) => {
                             eprintln!("Failed to flush data to tun interface: {}", err);
                             return;
                         }
                     }
+
+                    println!("Packet from client - tun finished");
                 }
             }
             6 => {
@@ -247,6 +285,8 @@ async fn handle_tun_with_nat(
                             return;
                         }
                     }
+
+                    println!("Packet from tun - client finished");
                 }
             }
             6 => {
