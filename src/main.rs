@@ -158,16 +158,6 @@ async fn handle_connection_with_nat(
                             }
                         }
 
-                        match tun.write().await.flush().await {
-                            Ok(_n) => {
-                                println!("Data flushed to tun interface");
-                            }
-                            Err(err) => {
-                                eprintln!("Failed to flush data to tun interface: {}", err);
-                                return;
-                            }
-                        }
-
                         println!("Packet from client - tun finished");
                     }
                 }
@@ -276,15 +266,6 @@ async fn handle_tun_with_nat(
                         }
                         Err(err) => {
                             eprintln!("Failed to write data to tcp client: {}", err);
-                            return;
-                        }
-                    }
-                    match stream.flush().await {
-                        Ok(_n) => {
-                            println!("flushed to tcp client");
-                        }
-                        Err(err) => {
-                            eprintln!("Failed to flush data to tcp client: {}", err);
                             return;
                         }
                     }
