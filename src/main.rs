@@ -5,7 +5,9 @@ use std::{
 
 use pnet::packet::{ipv4::MutableIpv4Packet, ipv6::MutableIpv6Packet, Packet};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, sync::{mpsc, RwLock}
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    net::{TcpListener, TcpStream},
+    sync::{mpsc, RwLock},
 };
 use tun::AsyncDevice;
 
@@ -15,7 +17,6 @@ const BUFFER_SIZE: usize = 1024;
 async fn main() -> std::io::Result<()> {
     let mut config = tun::Configuration::default();
     config
-        .name("utun7")
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
         .up();
@@ -25,7 +26,7 @@ async fn main() -> std::io::Result<()> {
         config.packet_information(true);
     });
 
-/*     // Create channels for communication between client handlers and the TUN task
+    /*     // Create channels for communication between client handlers and the TUN task
     let (tun_tx, mut tun_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
     let (client_tx, mut client_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100); */
 
@@ -36,7 +37,7 @@ async fn main() -> std::io::Result<()> {
         let mut tun = tun.clone();
         let mut buf = [0; BUFFER_SIZE];
 
-        
+
         loop {
             tokio::select! {
                 /* tun_packet = tun.read(&mut buf).await => {
@@ -82,7 +83,6 @@ async fn main() -> std::io::Result<()> {
         });
     }
 }
-
 
 async fn handle_connection_with_nat(
     mut stream: ReadHalf<TcpStream>,
@@ -146,28 +146,30 @@ async fn handle_connection_with_nat(
                     println!("Raw Packet going to tun {:?}", packet);
                     println!();
 
-                    // write to tun
-                    match tun.write().await.write_all(packet).await {
-                        Ok(_n) => {
-                            println!("Data written to tun interface");
+                    {
+                        // write to tun
+                        match tun.write().await.write_all(packet).await {
+                            Ok(_n) => {
+                                println!("Data written to tun interface");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to write data to tun interface: {}", err);
+                                return;
+                            }
                         }
-                        Err(err) => {
-                            eprintln!("Failed to write data to tun interface: {}", err);
-                            return;
-                        }
-                    }
 
-                    match tun.write().await.flush().await {
-                        Ok(_n) => {
-                            println!("Data flushed to tun interface");
+                        match tun.write().await.flush().await {
+                            Ok(_n) => {
+                                println!("Data flushed to tun interface");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to flush data to tun interface: {}", err);
+                                return;
+                            }
                         }
-                        Err(err) => {
-                            eprintln!("Failed to flush data to tun interface: {}", err);
-                            return;
-                        }
-                    }
 
-                    println!("Packet from client - tun finished");
+                        println!("Packet from client - tun finished");
+                    }
                 }
             }
             6 => {
@@ -207,30 +209,31 @@ async fn handle_tun_with_nat(
 ) {
     let mut buffer = [0; 1500];
     loop {
-
         let mut packet = Vec::new();
 
-        loop {
-            let n = match tun_reader.write().await.read(&mut buffer).await {
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("Failed to read data: {}", e);
+        {
+            loop {
+                let n = match tun_reader.write().await.read(&mut buffer).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        eprintln!("Failed to read data: {}", e);
+                        break;
+                    }
+                };
+                if n == 0 {
+                    println!("Client disconnected:");
                     break;
                 }
-            };
-            if n == 0 {
-                println!("Client disconnected:");
-                break;
+                packet.extend_from_slice(&buffer[..n]);
+                if n < BUFFER_SIZE {
+                    // If less than buffer size is read, assume end of message
+                    break;
+                }
             }
-            packet.extend_from_slice(&buffer[..n]);
-            if n < BUFFER_SIZE {
-                // If less than buffer size is read, assume end of message
-                break;
-            }
-        }
 
-        if packet.is_empty() {
-            continue;
+            if packet.is_empty() {
+                continue;
+            }
         }
 
         println!();
