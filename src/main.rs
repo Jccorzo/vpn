@@ -91,6 +91,7 @@ async fn handle_connection_with_nat(
         /* println!();
         println!("Raw packet from client: {:?}", &packet);
         println!(); */
+        let mut packet = [AF_INET.to_vec(), packet].concat();
 
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
