@@ -132,16 +132,6 @@ async fn handle_connection_with_nat(
         println!("Raw packet from client: {:?}", &packet);
         println!();
 
-        match tun.write().await.write_all( &[AF_INET.to_vec(), packet.clone()].concat()).await {
-            Ok(_n) => {
-                println!("Data written to tun interface");
-            }
-            Err(err) => {
-                eprintln!("Failed to write data to tun interface: {}", err);
-                return;
-            }
-        }
-
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
             4 => {
@@ -157,20 +147,22 @@ async fn handle_connection_with_nat(
                     );
 
                     // TODO: update this from locally getting public ip
-/*                     let source = Ipv4Addr::new(34, 121, 29, 210);
+                     let source = Ipv4Addr::new(34, 44, 215, 250);
                     mut_pack.set_source(source);
-                    mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); */
-
-                    // let packet = ;
-
-                    println!();
-                    println!("Raw Packet going to tun {:?}", mut_pack.packet());
-                    println!();
+                    mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); 
 
                     {
                         // write to tun
+                        match tun.write().await.write_all( &[AF_INET.to_vec(),  mut_pack.packet().to_vec()].concat()).await {
+                            Ok(_n) => {
+                                println!("Data written to tun interface");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to write data to tun interface: {}", err);
+                                return;
+                            }
+                        }
                         
-
                         println!("Packet from client - tun finished");
                     }
                 }
