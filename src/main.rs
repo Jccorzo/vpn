@@ -253,8 +253,8 @@ async fn handle_tun_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    let source = Ipv4Addr::new(34, 44, 215, 250);
-                    mut_pack.set_destination(source);
+                    let destination = Ipv4Addr::new(10, 0, 0, 5);
+                    mut_pack.set_destination(destination);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
                     // write to stream
