@@ -18,13 +18,13 @@ async fn main() -> std::io::Result<()> {
         .name("tun0")
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
-        .layer(tun::Layer::L2)
+        .layer(tun::Layer::L3)
         .queues(2)
         .up();
 
     #[cfg(target_os = "linux")]
     config.platform(|config| {
-        config.packet_information(false);
+        config.packet_information(true);
     });
 
     let dev2 = tun::create(&config).expect("hah");
@@ -264,163 +264,3 @@ async fn handle_tun_with_nat(
         }
     }
 }
-
-
-/* async fn handle_connection_and_tun(
-    mut stream_r: ReadHalf<TcpStream>,
-    mut stream_w: WriteHalf<TcpStream>,
-    tun: Arc<RwLock<AsyncDevice>>,
-) {
-    let mut buffer = [0; BUFFER_SIZE];
-    let mut buffer_2 = [0; BUFFER_SIZE];
-
-    let mut packet_from_client = Vec::new();
-    let mut packet_from_tun = Vec::new();
-
-    loop {
-
-        let read_from_tun = tun.write().await.read(&mut buffer_2);
-        select! {
-            // Handling incoming data from the TCP stream (client)
-            result = stream_r.read(&mut buffer) => {
-                match result {
-                    Ok(n) => {
-                        if n > 0 {
-                            packet_from_client.extend_from_slice(&buffer[..n]);
-                            if n < BUFFER_SIZE {
-                                // If less than buffer size is read, assume end of message
-                                println!();
-                                println!("Raw packet from client: {:?}", packet_from_client);
-                                println!();
-    
-                                match packet_from_client[0] >> 4 {
-                                    4 => {
-                                        if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet_from_client) {
-                                            println!(
-                                                "TCP IPV4 Source IP: {:?}",
-                                                mut_pack.get_source().to_string()
-                                            );
-                                            println!(
-                                                "TCP IPV4 Destination IP: {:?}",
-                                                mut_pack.get_destination().to_string()
-                                            );
-    
-                                            let source = Ipv4Addr::new(34, 121, 29, 210);
-                                            mut_pack.set_source(source);
-                                            mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
-    
-                                            let packet = mut_pack.packet();
-    
-                                            println!();
-                                            println!("Raw Packet going to tun {:?}", packet);
-                                            println!();
-    
-                                            // Write to TUN
-                                            if let Err(e) = tun.write().await.write_all(packet).await {
-                                                eprintln!("Failed to write data to tun interface: {}", e);
-                                            }
-                                            println!("Packet from client - tun finished");
-                                        }
-                                    }
-                                    6 => {
-                                        println!("IP 6 version from client");
-                                        if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet_from_client) {
-                                            println!(
-                                                "TCP IPV6 Source IP: {:?}",
-                                                mut_pack.get_source().to_string()
-                                            );
-                                            println!(
-                                                "TCP IPV6 Destination IP: {:?}",
-                                                mut_pack.get_destination().to_string()
-                                            );
-                                            // Handle IPv6 packet as needed
-                                        }
-                                    }
-                                    _ => println!("Unknown IP version from client"),
-                                }
-                                packet_from_client.clear();
-                            }
-                        }
-                        
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to read data from client: {}", e);
-                        break;
-                    }
-                }
-            }
-
-            // Handling incoming data from the TUN interface
-            result = read_from_tun => {
-                match result {
-                    Ok(n) => {
-                        if n > 0 {}
-                        packet_from_tun.extend_from_slice(&buffer_2[..n]);
-                        if n < BUFFER_SIZE {
-                            // If less than buffer size is read, assume end of message
-                            println!();
-                            println!("Raw packet from tun: {:?}", packet_from_tun);
-                            println!();
-
-                            let ip_start = if buffer_2[0] == 0 && buffer_2[1] == 0 {
-                                2 // Skip the first 2 bytes (padding or extra data)
-                            } else {
-                                0 // IP packet starts at the first byte
-                            };
-
-                            match packet_from_tun[ip_start] >> 4 {
-                                4 => {
-                                    if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer_2) {
-                                        println!(
-                                            "TUN IPV4 Source IP: {:?}",
-                                            mut_pack.get_source().to_string()
-                                        );
-                                        println!(
-                                            "TUN IPV4 Destination IP: {:?}",
-                                            mut_pack.get_destination().to_string()
-                                        );
-
-                                        let source = Ipv4Addr::new(10, 0, 0, 5);
-                                        mut_pack.set_destination(source);
-                                        mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
-
-                                        // Write to TCP stream
-                                        if let Err(e) = stream_w.write_all(&mut_pack.packet()).await {
-                                            eprintln!("Failed to write data to TCP client: {}", e);
-                                        }
-                                        println!("Packet from tun - client finished");
-                                    }
-                                }
-                                6 => {
-                                    println!("IP 6 version from tun");
-                                    if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet_from_tun) {
-                                        println!(
-                                            "TCP IPV6 Source IP: {:?}",
-                                            mut_pack.get_source().to_string()
-                                        );
-                                        println!(
-                                            "TCP IPV6 Destination IP: {:?}",
-                                            mut_pack.get_destination().to_string()
-                                        );
-                                        // Handle IPv6 packet as needed
-                                    }
-                                }
-                                _ => println!("Unknown IP version from tun"),
-                            }
-                            packet_from_tun.clear();
-                        }
-                    }
-                    Ok(0) => {
-                        // TUN interface disconnected
-                        println!("TUN interface disconnected:");
-                        break;
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to read data from TUN interface: {}", e);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-} */
