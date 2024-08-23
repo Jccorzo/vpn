@@ -81,10 +81,10 @@ async fn handle_connection_with_nat(
                     break;
                 }
             }
+        }
 
-            if packet.is_empty() {
-                continue;
-            }
+        if packet.is_empty() {
+            continue;
         }
 
         /* println!();
@@ -112,7 +112,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
-                        match tun_writer.write().await.write_all( &[AF_INET.to_vec(),  mut_pack.packet().to_vec()].concat()) {
+                        match tun_writer.write().await.write_all( &mut_pack.packet()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
@@ -182,11 +182,10 @@ async fn handle_tun_with_nat(
                     break;
                 }
             }
+        }
 
-
-            if packet.is_empty() {
-                continue;
-            }
+        if packet.is_empty() {
+            continue;
         }
 
         /* println!();
