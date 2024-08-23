@@ -148,15 +148,15 @@ async fn handle_connection_with_nat(
                     mut_pack.set_source(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); */
 
-                    let packet = mut_pack.packet();
+                    // let packet = ;
 
                     println!();
-                    println!("Raw Packet going to tun {:?}", packet);
+                    println!("Raw Packet going to tun {:?}", mut_pack.packet());
                     println!();
 
                     {
                         // write to tun
-                        match tun.write().await.write_all(packet).await {
+                        match tun.write().await.write_all(&packet).await {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
