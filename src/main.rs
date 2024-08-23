@@ -1,10 +1,15 @@
 use std::{
-    io::{Read, Write}, net::Ipv4Addr, sync::Arc
+    io::{Read, Write},
+    sync::Arc,
 };
 
-use pnet::packet::{ipv4::MutableIpv4Packet, tcp::MutableTcpPacket, Packet};
+use pnet::packet::{
+    ipv4::MutableIpv4Packet, ipv6::MutableIpv6Packet, Packet,
+};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, sync::RwLock
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf},
+    net::{TcpListener, TcpStream},
+    sync::RwLock,
 };
 use tun::platform::posix::{Reader, Writer};
 
@@ -28,7 +33,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let dev2 = tun::create(&config).expect("hah");
-    
+
     let (reader, writer) = dev2.split();
     let reader = Arc::new(RwLock::new(reader));
     let writer = Arc::new(RwLock::new(writer));
@@ -56,7 +61,7 @@ async fn main() -> std::io::Result<()> {
 
 async fn handle_connection_with_nat(
     mut stream: ReadHalf<TcpStream>,
-    tun_writer: Arc<RwLock<Writer>>
+    tun_writer: Arc<RwLock<Writer>>,
 ) {
     let mut buffer = [0; BUFFER_SIZE];
 
@@ -94,11 +99,9 @@ async fn handle_connection_with_nat(
 
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
-
             4 => {
                 println!("IP 4 version from client");
-                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
-            
+                if let Some(mut_pack) = MutableIpv4Packet::new(&mut packet) {
                     println!(
                         "TCP IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -108,15 +111,10 @@ async fn handle_connection_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    println!(
-                        "Checksum BEFORe: {:?}",
-                        mut_pack.get_checksum().to_string()
-                    );
-
                     // TODO: update this from locally getting public ip
                     //let source = Ipv4Addr::new(34, 44, 215, 250);
                     //mut_pack.set_source(source);
-                    //mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); 
+                    //mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
                     /* if mut_pack.get_next_level_protocol() == pnet::packet::ip::IpNextHeaderProtocols::Tcp {
                         let packet = mut_pack.packet();
@@ -125,12 +123,12 @@ async fn handle_connection_with_nat(
                             tcp_packet.set_checksum(pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &mut_pack.get_destination(), &mut_pack.get_destination()));
                         }
                     } */
-                   
-
 
                     {
                         // write to tun
-                        match tun_writer.write().await.write_all( &[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat()) {
+                        match tun_writer.write().await.write_all(
+                            &[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat(),
+                        ) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
@@ -145,7 +143,7 @@ async fn handle_connection_with_nat(
                 }
             }
             6 => {
-                /* println!("IP 6 version from client");
+                println!("IP 6 version from client");
                 if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
                         "TCP IPV6 Source IP: {:?}",
@@ -159,25 +157,28 @@ async fn handle_connection_with_nat(
                     /* let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
                     mut_pack.set_source(source); */
 
-                    // write to stream
-                    /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
-                        eprintln!("Failed to send data: {}", e);
-                        break;
-                    } else {
-                        println!("ipv6 data sent");
-                        println!();
-                    } */
-                } */
+                    {
+                        // write to tun
+                        match tun_writer.write().await.write_all(
+                            &[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat(),
+                        ) {
+                            Ok(_n) => {
+                                println!("Data written to tun interface");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to write data to tun interface: {}", err);
+                                return;
+                            }
+                        }
+                    }
+                }
             }
             _ => println!("Unknown IP version from client"),
         }
     }
 }
 
-async fn handle_tun_with_nat(
-    mut stream: WriteHalf<TcpStream>,
-    tun_reader: Arc<RwLock<Reader>>
-) {
+async fn handle_tun_with_nat(mut stream: WriteHalf<TcpStream>, tun_reader: Arc<RwLock<Reader>>) {
     let mut buffer = [0; BUFFER_SIZE];
 
     loop {
@@ -212,15 +213,15 @@ async fn handle_tun_with_nat(
         println!("Raw packet from tun: {:?}", packet);
         println!(); */
 
-        let packet = packet[4..].to_vec();
+        let mut packet = packet[4..].to_vec();
 
         /* println!();
-        println!("Raw packet from tun AFTER removing header: {:?}", packet);
-        println!();
- */
+               println!("Raw packet from tun AFTER removing header: {:?}", packet);
+               println!();
+        */
         match packet[0] >> 4 {
             4 => {
-                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
+                if let Some(mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
                         "TUN IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -235,23 +236,22 @@ async fn handle_tun_with_nat(
                     //mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
                     // write to stream
-                    match stream.write_all(&mut_pack.packet()).await {
-                        Ok(_n) => {
-                            println!("Data written to tcp client");
-                        }
-                        Err(err) => {
-                            eprintln!("Failed to write data to tcp client: {}", err);
-                            println!();
+                    {
+                        match stream.write_all(&mut_pack.packet()).await {
+                            Ok(_n) => {
+                                println!("Data written to tcp client");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to write data to tcp client: {}", err);
+                                println!();
+                            }
                         }
                     }
-
-                    println!("Packet from tun - client finished");
                 }
             }
             6 => {
-                
-                /* println!("IP 6 version from tun");
-                if let Some(mut mut_pack) = MutableIpv6Packet::new(&mut packet) {
+                println!("IP 6 version from tun");
+                if let Some(mut_pack) = MutableIpv6Packet::new(&mut packet) {
                     println!(
                         "TCP IPV6 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -261,25 +261,27 @@ async fn handle_tun_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
-                    mut_pack.set_destination(source); */
+                    // let source = Ipv4Addr::new(10, 0, 0, 5).to_ipv6_mapped();
+                    // mut_pack.set_destination(source);
 
-                    // write to tun
-                    // read from tun
-                    // write to stream
-
-                    /* if let Err(e) = stream.write_all(mut_pack.packet()).await {
-                        eprintln!("Failed to send data: {}", e);
-                        break;
-                    } else {
-                        println!("ipv6 data sent");
-                        println!();
-                    } 
-                }*/
+                    {
+                        match stream.write_all(&mut_pack.packet()).await {
+                            Ok(_n) => {
+                                println!("Data written to tcp client");
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to write data to tcp client: {}", err);
+                                println!();
+                            }
+                        }
+                    }
+                }
             }
             _ => {
                 println!("Unknown IP version from tun")
             }
         }
+
+        println!("Packet from tun - client finished");
     }
 }
