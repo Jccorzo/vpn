@@ -15,6 +15,7 @@ const AF_INET: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
 async fn main() -> std::io::Result<()> {
     let mut config = tun::Configuration::default();
     config
+        .name("tun0")
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
         .layer(tun::Layer::L2)
