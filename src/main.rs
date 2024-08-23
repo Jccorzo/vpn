@@ -193,7 +193,7 @@ async fn handle_tun_with_nat(
         println!("Raw packet from tun: {:?}", packet);
         println!(); */
 
-        // let packet = packet[4..].to_vec();
+        let packet = packet[4..].to_vec();
 
         /* println!();
         println!("Raw packet from tun AFTER removing header: {:?}", packet);
