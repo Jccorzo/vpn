@@ -8,12 +8,13 @@ fn main() {
 		   .address((10, 0, 0, 1))
 	       .netmask((255, 255, 255, 0))
            .layer(tun::Layer::L3)
+           .queues(2)
 	       .up();
 
-	#[cfg(target_os = "linux")]
+	/* #[cfg(target_os = "linux")]
 	config.platform(|config| {
 		config.packet_information(true);
-	});
+	}); */
 
 	let mut dev = tun::create(&config).unwrap();
 	let mut buf = [0; 4096];
@@ -39,7 +40,7 @@ fn main() {
 
 	let packet2 = [69, 0, 0, 64, 0, 0, 64, 0, 64, 6, 245, 87, 10, 0, 0, 5, 163, 70, 152, 21, 201, 143, 1, 187, 78, 208, 107, 60, 0, 0, 0, 0, 176, 194, 255, 255, 57, 81, 0, 0, 2, 4, 5, 180, 1, 3, 3, 6, 1, 1, 8, 10, 48, 89, 1, 218, 0, 0, 0, 0, 4, 2, 0, 0];
 
-	let af_inet: u32 = libc::AF_INET as u32;
+	let af_inet: [u8; 4] = [0x00, 0x00, 0x00, 0x02]; // or [0x00, 0x00, 0x00, 0x02]
 	let mut packet3: Vec<u8> = vec![
         0x45, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40, 0x00,
         0x40, 0x06, 0xf5, 0x57, 0x0a, 0x00, 0x00, 0x05,
@@ -65,7 +66,7 @@ fn main() {
 	}
 
     // Prefix packet with address family (AF_INET)
-    let mut prefixed_packet = af_inet.to_be_bytes().to_vec();
+    let mut prefixed_packet = af_inet.to_vec();
     prefixed_packet.append(&mut packet3);
 
 	match prefixed_packet[0] >> 4 {
