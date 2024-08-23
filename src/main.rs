@@ -11,10 +11,10 @@ fn main() {
            //.queues(1)
 	       .up();
 
-	/* #[cfg(target_os = "linux")]
+	#[cfg(target_os = "linux")]
 	config.platform(|config| {
-		config.packet_information(true);
-	}); */
+		config.packet_information(false);
+	});
 
 	let mut dev = tun::create(&config).unwrap();
 
