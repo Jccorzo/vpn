@@ -96,7 +96,7 @@ async fn handle_connection_with_nat(
         match packet[0] >> 4 {
             4 => {
                 println!("IP 4 version from client");
-                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
+                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut [AF_INET.to_vec(), packet].concat() ) {
                     println!(
                         "TCP IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -113,7 +113,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
-                        match tun_writer.write().await.write_all( &[AF_INET.to_vec(), mut_pack.packet().to_vec()].concat()) {
+                        match tun_writer.write().await.write_all( mut_pack.packet()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
