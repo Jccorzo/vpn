@@ -132,6 +132,7 @@ async fn handle_connection_with_nat(
         match tun.write().await.write_all(&packet).await {
             Ok(_n) => {
                 println!("Data written to tun interface");
+                tun.write().await.flush();
             }
             Err(err) => {
                 eprintln!("Failed to write data to tun interface: {}", err);
@@ -140,7 +141,7 @@ async fn handle_connection_with_nat(
         }
 
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
-       /*  match packet[0] >> 4 {
+        match packet[0] >> 4 {
             4 => {
                 println!("IP 4 version from client");
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
@@ -199,7 +200,7 @@ async fn handle_connection_with_nat(
             }
             _ => println!("Unknown IP version from client"),
         }
-     */}
+    }
 }
 
 async fn handle_tun_with_nat(
