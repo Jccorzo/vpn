@@ -23,14 +23,14 @@ async fn main() -> std::io::Result<()> {
         .name("tun0")
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
-        .layer(tun::Layer::L3)
+        .layer(tun::Layer::L2)
         .mtu(1500)
         .queues(2)
         .up();
 
     #[cfg(target_os = "linux")]
     config.platform(|config| {
-        config.packet_information(true);
+        config.packet_information(false);
     });
 
     let dev2 = tun::create(&config).expect("hah");
@@ -97,6 +97,22 @@ async fn handle_connection_with_nat(
         /* println!();
         println!("Raw packet from client: {:?}", &packet);
         println!(); */
+
+        {
+            // write to tun
+            //match tun_writer.write().await.write_all(mut_pack.packet()) {
+            match tun_writer.write().await.write_all(&packet) {
+                Ok(_n) => {
+                    println!("Data written to tun interface");
+                }
+                Err(err) => {
+                    eprintln!("Failed to write data to tun interface: {}", err);
+                    return;
+                }
+            }
+        }
+
+        continue;
 
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
@@ -213,7 +229,21 @@ async fn handle_tun_with_nat(mut stream: WriteHalf<TcpStream>, tun_reader: Arc<R
         println!("Raw packet from tun: {:?}", packet);
         println!(); */
 
-        let mut packet = packet[4..].to_vec();
+        {
+            match stream.write_all(&packet).await {
+                Ok(_n) => {
+                    println!("Data written to tcp client");
+                }
+                Err(err) => {
+                    eprintln!("Failed to write data to tcp client: {}", err);
+                    println!();
+                }
+            }
+        }
+
+        continue;
+
+        //let mut packet = packet[4..].to_vec();
 
         /* println!();
                println!("Raw packet from tun AFTER removing header: {:?}", packet);
