@@ -123,28 +123,25 @@ async fn handle_connection_with_nat(
                         if let Some(mut tcp_packet) = MutableTcpPacket::new(&mut packet.to_owned()) {
                             // Recalculate the TCP checksum
                             tcp_packet.set_checksum(pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &mut_pack.get_destination(), &mut_pack.get_destination()));
+
+                            {
+                                // write to tun
+                                match tun_writer.write().await.write_all( &[AF_INET.to_vec().to_owned(), tcp_packet.packet().to_vec()].concat()) {
+                                    Ok(_n) => {
+                                        println!("Data written to tun interface");
+                                    }
+                                    Err(err) => {
+                                        eprintln!("Failed to write data to tun interface: {}", err);
+                                        return;
+                                    }
+                                }
+                            }
+        
                         }
                     }
                    
 
-                    println!(
-                        "Checksum AFTER: {:?}",
-                        mut_pack.get_checksum().to_string()
-                    );
-
-                    {
-                        // write to tun
-                        match tun_writer.write().await.write_all( &[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat()) {
-                            Ok(_n) => {
-                                println!("Data written to tun interface");
-                            }
-                            Err(err) => {
-                                eprintln!("Failed to write data to tun interface: {}", err);
-                                return;
-                            }
-                        }
-                    }
-
+                   
                     println!()
                 }
             }
