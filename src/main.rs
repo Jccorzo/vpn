@@ -17,6 +17,8 @@ async fn main() -> std::io::Result<()> {
     config
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
+        .layer(tun::Layer::L3)
+        .queues(1)
         .up();
 
     #[cfg(target_os = "linux")]
