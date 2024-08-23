@@ -24,6 +24,7 @@ async fn main() -> std::io::Result<()> {
         .address((10, 0, 0, 1))
         .netmask((255, 255, 255, 0))
         .layer(tun::Layer::L3)
+        .mtu(BUFFER_SIZE)
         .queues(2)
         .up();
 
