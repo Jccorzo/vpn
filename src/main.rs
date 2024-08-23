@@ -10,6 +10,7 @@ use tokio::{
 use tun::AsyncDevice;
 
 const BUFFER_SIZE: usize = 1500;
+const AF_INET: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -128,10 +129,10 @@ async fn handle_connection_with_nat(
         }
 
         println!();
-        println!("Raw packet from client: {:?}", packet);
+        println!("Raw packet from client: {:?}", &packet);
         println!();
 
-        match tun.write().await.write_all(&packet).await {
+        match tun.write().await.write_all( &[AF_INET.to_vec(), packet.clone()].concat()).await {
             Ok(_n) => {
                 println!("Data written to tun interface");
             }
