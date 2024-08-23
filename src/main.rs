@@ -96,7 +96,8 @@ async fn handle_connection_with_nat(
         match packet[0] >> 4 {
             4 => {
                 println!("IP 4 version from client");
-                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut [AF_INET.to_vec(), packet].concat() ) {
+                if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
+            
                     println!(
                         "TCP IPV4 Source IP: {:?}",
                         mut_pack.get_source().to_string()
@@ -106,10 +107,20 @@ async fn handle_connection_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
+                    println!(
+                        "Checksum BEFORe: {:?}",
+                        mut_pack.get_checksum().to_string()
+                    );
+
                     // TODO: update this from locally getting public ip
                      let source = Ipv4Addr::new(34, 44, 215, 250);
                     mut_pack.set_source(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); 
+
+                    println!(
+                        "Checksum AFTER: {:?}",
+                        mut_pack.get_checksum().to_string()
+                    );
 
                     {
                         // write to tun
@@ -123,6 +134,8 @@ async fn handle_connection_with_nat(
                             }
                         }
                     }
+
+                    println!()
                 }
             }
             6 => {
