@@ -1,16 +1,32 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
+    io::{Read, Write}, net::Ipv4Addr, sync::Arc
 };
 
 use pnet::packet::{ipv4::MutableIpv4Packet, ipv6::MutableIpv6Packet, Packet};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, select, sync::{mpsc, RwLock}
+    io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, sync::RwLock
 };
-use tun::AsyncDevice;
+use tun::{platform::posix::{Reader, Writer}, AsyncDevice, Device};
 
 const BUFFER_SIZE: usize = 1500;
 const AF_INET: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
+
+struct TunDevice {
+    read_lock: RwLock<AsyncDevice>,
+    write_lock: RwLock<AsyncDevice>,
+}
+
+impl TunDevice {
+    async fn read(&self, buffer: &mut [u8]) -> Result<usize, std::io::Error> {
+        let mut read_device = self.read_lock.write().await;
+        read_device.read(buffer).await
+    }
+
+    async fn write(&self, buffer: &[u8]) -> Result<usize, std::io::Error> {
+        let mut write_device = self.write_lock.write().await;
+        write_device.write(buffer).await
+    }
+}
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -27,49 +43,15 @@ async fn main() -> std::io::Result<()> {
         config.packet_information(true);
     });
 
-    // Create channels for communication between client handlers and the TUN task
-    let (tun_tx, mut tun_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
-    let (client_tx, mut client_rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(100);
-
-    let client_rx = Arc::new(client_rx);
+    let dev2 = tun::create(&config).expect("hah");
+    
+    let (reader, writer) = dev2.split();
+    let reader = Arc::new(RwLock::new(reader));
+    let writer = Arc::new(RwLock::new(writer));
 
     let dev = tun::create_as_async(&config).expect("Error opening tun interface");
 
-
     let tun = Arc::new(RwLock::new(dev));
-    /* let tun_task = tokio::spawn(async move {
-        let mut tun = tun.clone();
-        let mut buf = [0; BUFFER_SIZE];
-
-        loop {
-            tokio::select! {
-
-                //tun_packet = tun.read()
-
-                /* tun_packet = tun.read(&mut buf).await => {
-                    match tun_packet {
-                        Ok(size) => {
-                            //client_tx.send((buf[..size].to_vec(), SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 0)));
-                        },
-                        Err(e) => {
-                            eprintln!("Failed to read from Tun: {}", e)
-                        }
-                    }
-                } */
-
-                // Receive packets from client handlers to send to TUN
-                Some((packet, _client_addr)) = tun_rx.recv() => {
-                    println!("TUN task received packet to send to TUN");
-                    {
-                        if let Err(e) = tun.write().await.write_all(&packet).await {
-                            eprintln!("Failed to write packet to TUN: {}", e);
-                        }
-                    }
-                }
-
-            }
-        }
-    }); */
 
     let listener = TcpListener::bind("0.0.0.0:7878")
         .await
@@ -77,26 +59,26 @@ async fn main() -> std::io::Result<()> {
     println!("Server is running on port 7878");
 
     loop {
-        let (stream, address) = listener.accept().await?;
+        let (stream, _address) = listener.accept().await?;
         //let tun_tx = tun_tx.clone();
         //let client_rx = client_rx.clone();
-        let device_clone = tun.clone();
-        let device_clone2 = tun.clone();
+        let reader = reader.clone();
+        let writer = writer.clone();
 
         println!("Connection established!");
         tokio::spawn(async move {
             let (stream_r, stream_w) = tokio::io::split(stream);
 
             // handle_connection_with_nat(stream_r, device_clone).await;
-            tokio::spawn(handle_connection_with_nat(stream_r, device_clone));
-            tokio::spawn(handle_tun_with_nat(stream_w, device_clone2));
+            tokio::spawn(handle_connection_with_nat(stream_r, writer));
+            tokio::spawn(handle_tun_with_nat(stream_w, reader));
         });
     }
 }
 
 async fn handle_connection_with_nat(
     mut stream: ReadHalf<TcpStream>,
-    tun: Arc<RwLock<AsyncDevice>>
+    tun_writer: Arc<RwLock<Writer>>
 ) {
     let mut buffer = [0; BUFFER_SIZE];
 
@@ -153,7 +135,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
-                        match tun.write().await.write_all( &[AF_INET.to_vec(),  mut_pack.packet().to_vec()].concat()).await {
+                        match tun_writer.write().await.write_all( &[AF_INET.to_vec(),  mut_pack.packet().to_vec()].concat()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
@@ -199,7 +181,7 @@ async fn handle_connection_with_nat(
 
 async fn handle_tun_with_nat(
     mut stream: WriteHalf<TcpStream>,
-    tun_reader: Arc<RwLock<AsyncDevice>>
+    tun_reader: Arc<RwLock<Reader>>
 ) {
     let mut buffer = [0; BUFFER_SIZE];
 
@@ -208,7 +190,7 @@ async fn handle_tun_with_nat(
 
         {
             loop {
-                let n = match tun_reader.write().await.read(&mut buffer).await {
+                let n = match tun_reader.write().await.read(&mut buffer) {
                     Ok(n) => n,
                     Err(e) => {
                         eprintln!("Failed to read data: {}", e);
@@ -225,6 +207,7 @@ async fn handle_tun_with_nat(
                     break;
                 }
             }
+
 
             if packet.is_empty() {
                 continue;
