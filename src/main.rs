@@ -221,6 +221,7 @@ async fn handle_tun_with_nat(mut stream: WriteHalf<TcpStream>, tun_reader: Arc<R
         */
         match packet[0] >> 4 {
             4 => {
+                println!("IP 4 version from tun");
                 if let Some(mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
                         "TUN IPV4 Source IP: {:?}",
@@ -284,5 +285,4 @@ async fn handle_tun_with_nat(mut stream: WriteHalf<TcpStream>, tun_reader: Arc<R
 
         println!("Packet from tun - client finished");
     }
-    eprintln!("TUN READ FINISHEDDDDDD")
 }
