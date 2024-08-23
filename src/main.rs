@@ -8,7 +8,7 @@ fn main() {
 		   .address((10, 0, 0, 1))
 	       .netmask((255, 255, 255, 0))
            .layer(tun::Layer::L3)
-           .queues(2)
+           .queues(1)
 	       .up();
 
 	/* #[cfg(target_os = "linux")]
@@ -17,7 +17,6 @@ fn main() {
 	}); */
 
 	let mut dev = tun::create(&config).unwrap();
-	let mut buf = [0; 4096];
 
 	println!("tun interface: {:?}", config);
 
