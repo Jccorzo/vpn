@@ -87,9 +87,9 @@ async fn main() -> std::io::Result<()> {
         tokio::spawn(async move {
             let (stream_r, stream_w) = tokio::io::split(stream);
 
-            handle_connection_with_nat(stream_r, device_clone).await;
-            // tokio::spawn(handle_connection_with_nat(stream_r, device_clone));
-            // tokio::spawn(handle_tun_with_nat(stream_w, device_clone2));
+            // handle_connection_with_nat(stream_r, device_clone).await;
+            tokio::spawn(handle_connection_with_nat(stream_r, device_clone));
+            tokio::spawn(handle_tun_with_nat(stream_w, device_clone2));
         });
     }
 }
@@ -235,13 +235,13 @@ async fn handle_tun_with_nat(
         println!("Raw packet from tun: {:?}", packet);
         println!();
 
-        let ip_start = if buffer[0] == 0 && buffer[1] == 0 {
-            2 // Skip the first 2 bytes (padding or extra data)
-        } else {
-            0 // IP packet starts at the first byte
-        };
+        let mut packet = packet[4..].to_vec();
 
-        match packet[ip_start] >> 4 {
+        println!();
+        println!("Raw packet from tun AFTER removing header: {:?}", packet);
+        println!();
+
+        match packet[0] >> 4 {
             4 => {
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut buffer) {
                     println!(
@@ -253,7 +253,7 @@ async fn handle_tun_with_nat(
                         mut_pack.get_destination().to_string()
                     );
 
-                    let source = Ipv4Addr::new(10, 0, 0, 5);
+                    let source = Ipv4Addr::new(34, 44, 215, 250);
                     mut_pack.set_destination(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable()));
 
