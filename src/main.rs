@@ -2,7 +2,7 @@ use std::{
     io::{Read, Write}, net::Ipv4Addr, sync::Arc
 };
 
-use pnet::packet::{ipv4::MutableIpv4Packet, Packet};
+use pnet::packet::{ipv4::MutableIpv4Packet, tcp::MutableTcpPacket, Packet};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::{TcpListener, TcpStream}, sync::RwLock
 };
@@ -91,10 +91,10 @@ async fn handle_connection_with_nat(
         /* println!();
         println!("Raw packet from client: {:?}", &packet);
         println!(); */
-        let mut packet = [AF_INET.to_vec(), packet].concat();
 
         // This Data is coming from a tun interface, so packets are either ipv4 or ipv6
         match packet[0] >> 4 {
+
             4 => {
                 println!("IP 4 version from client");
                 if let Some(mut mut_pack) = MutableIpv4Packet::new(&mut packet) {
@@ -114,9 +114,18 @@ async fn handle_connection_with_nat(
                     );
 
                     // TODO: update this from locally getting public ip
-                     let source = Ipv4Addr::new(34, 44, 215, 250);
+                    let source = Ipv4Addr::new(34, 44, 215, 250);
                     mut_pack.set_source(source);
                     mut_pack.set_checksum(pnet::packet::ipv4::checksum(&mut_pack.to_immutable())); 
+
+                    if mut_pack.get_next_level_protocol() == pnet::packet::ip::IpNextHeaderProtocols::Tcp {
+                        let packet = mut_pack.packet();
+                        if let Some(mut tcp_packet) = MutableTcpPacket::new(&mut packet.to_owned()) {
+                            // Recalculate the TCP checksum
+                            tcp_packet.set_checksum(pnet::packet::tcp::ipv4_checksum(&tcp_packet.to_immutable(), &mut_pack.get_destination(), &mut_pack.get_destination()));
+                        }
+                    }
+                   
 
                     println!(
                         "Checksum AFTER: {:?}",
@@ -125,7 +134,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
-                        match tun_writer.write().await.write_all( mut_pack.packet()) {
+                        match tun_writer.write().await.write_all( &[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
