@@ -113,7 +113,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
-                        match tun_writer.write().await.write_all( &mut_pack.packet()) {
+                        match tun_writer.write().await.write_all( &[AF_INET.to_vec(), mut_pack.packet().to_vec()].concat()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
                             }
