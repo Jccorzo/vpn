@@ -13,7 +13,7 @@ use tokio::{
 };
 use tun::platform::posix::{Reader, Writer};
 
-const BUFFER_SIZE: usize = 1500;
+const BUFFER_SIZE: usize = 1460;
 const AF_INET: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
 
 #[tokio::main]
@@ -127,6 +127,7 @@ async fn handle_connection_with_nat(
 
                     {
                         // write to tun
+                        // match tun_writer.write().await.write_all(mut_pack.packet()) {
                         match tun_writer.write().await.write_all(&[AF_INET.to_vec().to_owned(), mut_pack.packet().to_vec()].concat()) {
                             Ok(_n) => {
                                 println!("Data written to tun interface");
