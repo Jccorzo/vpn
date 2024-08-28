@@ -13,7 +13,7 @@ use tokio::{
 };
 use tun::platform::posix::{Reader, Writer};
 
-const BUFFER_SIZE: usize = 1500;
+const BUFFER_SIZE: usize = 1460;
 const AF_INET: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() -> std::io::Result<()> {
     let mut config = tun::Configuration::default();
     config
         .name("tun0")
-        .address((10, 0, 0, 1))
+        .address((10, 8, 0, 0))
         .netmask((255, 255, 255, 0))
         .layer(tun::Layer::L3)
         .mtu(1460)
